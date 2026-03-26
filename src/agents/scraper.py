@@ -52,7 +52,9 @@ def fetch_articles():
                 article = {
                     "title": entry.get("title", "No title"),
                     "content": entry.get("description", entry.get("summary", "No content available")),
-                    "source": feed_name
+                    "source": feed_name,
+                    "url": entry.get("link", "#"),
+                    "published": entry.get("published", "Recently")
                 }
                 articles.append(article)
             
@@ -77,5 +79,7 @@ if __name__ == "__main__":
     
     for i, article in enumerate(articles, 1):
         print(f"\n{i}. [{article['source']}] {article['title']}")
+        print(f"   URL: {article['url']}")
+        print(f"   Published: {article['published']}")
         print(f"   Content preview: {article['content'][:150]}...")
         print("-" * 80)

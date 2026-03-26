@@ -1,11 +1,15 @@
 import os
+import sys
 from dotenv import load_dotenv
-from scraper import fetch_articles
-from analyser import analyse_article
-from digest import send_digest
+from src.agents import fetch_articles, analyse_article, send_digest
 
 # Load environment variables
 load_dotenv()
+
+# Fix Windows console encoding issues
+if sys.platform == 'win32':
+    sys.stdout.reconfigure(encoding='utf-8')
+    sys.stderr.reconfigure(encoding='utf-8')
 
 
 def main():
@@ -40,6 +44,8 @@ def main():
                 analyzed_article = {
                     'title': title,
                     'source': source,
+                    'url': article.get('url', '#'),
+                    'published': article.get('published', 'Recently'),
                     'category': analysis['category'],
                     'prelims_score': analysis['prelims_score'],
                     'mains_score': analysis['mains_score'],
@@ -66,7 +72,7 @@ def main():
         send_digest(analyzed_articles)
         
         # Step 4: Success
-        print("[DONE] Digest delivered successfully ✓")
+        print("[DONE] Digest delivered successfully")
         
     except Exception as e:
         print(f"[ERROR] Pipeline failed: {e}")

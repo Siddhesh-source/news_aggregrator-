@@ -1,6 +1,13 @@
 # Environment variables
 .env
 
+# Output directory
+output/
+
+# Generated files
+*.pdf
+*.html
+
 # Python
 __pycache__/
 *.py[cod]
