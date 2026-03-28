@@ -28,6 +28,7 @@ from src.utils.database import (
     track_user_session_access, get_latest_session_for_user,
     save_audio_path, get_audio_path
 )
+from src.utils.translator import translate_article, translate_mcq, get_supported_languages
 
 # JWT Configuration
 SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-secret-key-change-in-production-please")
@@ -619,6 +620,12 @@ async def root():
     }
 
 
+@app.get("/languages")
+async def get_languages():
+    """Get list of supported languages"""
+    return {"languages": get_supported_languages()}
+
+
 # ==================== AUTH ENDPOINTS ====================
 
 @app.post("/auth/signup", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
@@ -777,8 +784,8 @@ async def user_trigger_pipeline(
 
 
 @app.get("/session/{token}", response_model=SessionResponse | PendingSessionResponse)
-async def get_session(token: str):
-    """Get session details by dashboard token"""
+async def get_session(token: str, lang: str = 'en'):
+    """Get session details by dashboard token with optional language translation"""
     conn = get_connection()
     
     try:
@@ -819,9 +826,18 @@ async def get_session(token: str):
             attempted = len(article_attempts) > 0
             is_correct = article_attempts[0]['is_correct'] if attempted else None
             
+            # Translate article title if language is not English
+            article_title = article['title']
+            if lang != 'en':
+                try:
+                    translated = translate_article({'title': article_title}, lang)
+                    article_title = translated['title']
+                except Exception as e:
+                    print(f"Translation error for article title: {e}")
+            
             article_responses.append(ArticleResponse(
                 id=article['id'],
-                title=article['title'],
+                title=article_title,
                 source=article['source'],
                 category=article['category'],
                 prelims_score=article['prelims_score'],
@@ -847,8 +863,8 @@ async def get_session(token: str):
 
 
 @app.get("/session/{token}/mcq/{article_id}", response_model=MCQResponse)
-async def get_mcq(token: str, article_id: int):
-    """Get MCQ for an article"""
+async def get_mcq(token: str, article_id: int, lang: str = 'en'):
+    """Get MCQ for an article with optional language translation"""
     conn = get_connection()
     
     try:
@@ -865,15 +881,33 @@ async def get_mcq(token: str, article_id: int):
             raise HTTPException(status_code=404, detail="No MCQ found for this article")
         
         mcq = mcqs[0]
+        
+        # Translate MCQ if language is not English
+        mcq_data = {
+            'question': mcq['question'],
+            'option_a': mcq['option_a'],
+            'option_b': mcq['option_b'],
+            'option_c': mcq['option_c'],
+            'option_d': mcq['option_d'],
+            'explanation': mcq.get('explanation', ''),
+            'learning_insight': mcq.get('learning_insight', '')
+        }
+        
+        if lang != 'en':
+            try:
+                mcq_data = translate_mcq(mcq_data, lang)
+            except Exception as e:
+                print(f"Translation error for MCQ: {e}")
+        
         return MCQResponse(
             id=mcq['id'],
-            question=mcq['question'],
-            option_a=mcq['option_a'],
-            option_b=mcq['option_b'],
-            option_c=mcq['option_c'],
-            option_d=mcq['option_d'],
+            question=mcq_data['question'],
+            option_a=mcq_data['option_a'],
+            option_b=mcq_data['option_b'],
+            option_c=mcq_data['option_c'],
+            option_d=mcq_data['option_d'],
             gs_paper=mcq.get('gs_paper'),
-            learning_insight=mcq.get('learning_insight')
+            learning_insight=mcq_data.get('learning_insight')
         )
         
     finally:
@@ -881,8 +915,8 @@ async def get_mcq(token: str, article_id: int):
 
 
 @app.post("/session/{token}/attempt", response_model=AttemptResponse)
-async def submit_attempt(token: str, attempt: AttemptRequest, background_tasks: BackgroundTasks):
-    """Submit a quiz attempt"""
+async def submit_attempt(token: str, attempt: AttemptRequest, background_tasks: BackgroundTasks, lang: str = 'en'):
+    """Submit a quiz attempt with optional language translation"""
     conn = get_connection()
     
     try:
@@ -901,12 +935,28 @@ async def submit_attempt(token: str, attempt: AttemptRequest, background_tasks: 
         existing_attempts = get_attempts_by_mcq(conn, attempt.mcq_id)
         if existing_attempts:
             existing = existing_attempts[0]
+            
+            # Translate response if needed
+            explanation = mcq['explanation']
+            learning_insight = mcq.get('learning_insight', '')
+            
+            if lang != 'en':
+                try:
+                    translated = translate_mcq({
+                        'explanation': explanation,
+                        'learning_insight': learning_insight
+                    }, lang)
+                    explanation = translated.get('explanation', explanation)
+                    learning_insight = translated.get('learning_insight', learning_insight)
+                except Exception as e:
+                    print(f"Translation error: {e}")
+            
             return AttemptResponse(
                 is_correct=existing['is_correct'],
                 correct_option=mcq['correct_option'],
-                explanation=mcq['explanation'],
+                explanation=explanation,
                 gs_paper=mcq.get('gs_paper'),
-                learning_insight=mcq.get('learning_insight')
+                learning_insight=learning_insight
             )
         
         is_correct = attempt.selected_option == mcq['correct_option']
@@ -935,12 +985,27 @@ async def submit_attempt(token: str, attempt: AttemptRequest, background_tasks: 
         if len(attempted_articles) == len(all_articles):
             update_session_status(conn, session['id'], 'completed')
         
+        # Translate response if needed
+        explanation = mcq['explanation']
+        learning_insight = mcq.get('learning_insight', '')
+        
+        if lang != 'en':
+            try:
+                translated = translate_mcq({
+                    'explanation': explanation,
+                    'learning_insight': learning_insight
+                }, lang)
+                explanation = translated.get('explanation', explanation)
+                learning_insight = translated.get('learning_insight', learning_insight)
+            except Exception as e:
+                print(f"Translation error: {e}")
+        
         return AttemptResponse(
             is_correct=is_correct,
             correct_option=mcq['correct_option'],
-            explanation=mcq['explanation'],
+            explanation=explanation,
             gs_paper=mcq.get('gs_paper'),
-            learning_insight=mcq.get('learning_insight')
+            learning_insight=learning_insight
         )
         
     finally:
